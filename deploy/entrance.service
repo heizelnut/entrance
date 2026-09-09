@@ -1,0 +1,26 @@
+[Unit]
+Description=Entrance bastion control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=entrance
+Group=entrance
+ExecStart=/usr/local/bin/entrance serve --data-dir /var/lib/entrance \
+    --relay-mode wg --hostname YOUR_DOMAIN
+Environment=ENTRANCE_ADMIN_PASSWORD=
+Environment=ENTRANCE_LOG_LEVEL=info
+Restart=on-failure
+RestartSec=5
+# harden
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/entrance
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
