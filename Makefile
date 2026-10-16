@@ -1,11 +1,11 @@
-.PHONY: build test lint vet e2e dev clean cross-linux
+.PHONY: build test vet lint dev dev-agent clean cross-linux
 
 BIN_DIR ?= bin
+TOKEN ?= local-dev
 
 build:
 	go build -o $(BIN_DIR)/entrance ./cmd/entrance
 	go build -o $(BIN_DIR)/entranced ./cmd/entranced
-	go build -o $(BIN_DIR)/entrui ./cmd/entrui
 
 test:
 	go test ./...
@@ -16,22 +16,19 @@ vet:
 lint:
 	golangci-lint run ./...
 
-# e2e runs the full rootless vertical slice: real entrance + entranced
-# binaries over HTTPS, WG handshake inside the control channel, relay echo,
-# revocation. Requires no root.
-e2e:
-	go test ./tests/e2e/ -v -timeout 180s
-
-# Real TUN end-to-end on this machine (requires sudo: utun interfaces + ifconfig).
-e2e-tun:
-	sudo ./scripts/e2e-tun.sh
-
-# Local smoke: dev bastion on :8443. Ctrl-C to stop.
+# dev: bastion on http://localhost:8443 (plain HTTP on localhost is a secure
+# context, so WebAuthn works without a trusted certificate). Ctrl-C to stop.
 dev:
 	go build -o $(BIN_DIR)/entrance ./cmd/entrance
-	@echo "started dev control plane: https://127.0.0.1:8443 (self-signed; pin with --ca-file)"
-	ENTRANCE_ADMIN_PASSWORD=local-dev ./$(BIN_DIR)/entrance serve --dev \
-		--data-dir ./data/dev --listen 127.0.0.1:8443
+	@echo "bastion: http://localhost:8443  (bootstrap token: $(TOKEN))"
+	./$(BIN_DIR)/entrance --dev --listen 127.0.0.1:8443 --hostname localhost \
+		--token $(TOKEN) --data-dir ./data
+
+# dev-agent: an agent that connects to the local dev bastion.
+dev-agent:
+	go build -o $(BIN_DIR)/entranced ./cmd/entranced
+	./$(BIN_DIR)/entranced --server http://127.0.0.1:8443 --token $(TOKEN) \
+		--hostname dev-host --audit-log ./data/agent-audit.log
 
 cross-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(BIN_DIR)/linux-amd64/entrance ./cmd/entrance

@@ -1,20 +1,16 @@
 [Unit]
-Description=Entrance agent (outbound-only spoke)
+Description=Entrance agent (outbound-only remote shell)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/entranced --server https://YOUR_BASTION \
-    --allow 22,3389,5432 --net-mode tun
-# First run: seed the enrollment secret once, then remove it.
-Environment=ENTRANCED_ENROLL_SECRET=
-Restart=on-failure
-RestartSec=5
-# The agent creates a TUN interface and assigns IPs -> needs NET_ADMIN.
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
-NoNewPrivileges=true
+# ENTRANCED_TOKEN=<shared token> in this file (chmod 600).
+EnvironmentFile=/etc/entrance/entranced.env
+ExecStart=/usr/local/bin/entranced --server https://bastion.example.com \
+    --audit-log /var/log/entranced-audit.log
+Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target

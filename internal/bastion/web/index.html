@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Entrance</title>
+	<link rel="stylesheet" href="/static/xterm.css">
+	<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+	<header>
+		<h1>Entrance</h1>
+		<div id="who"><button id="logout-btn" hidden>Sign out</button></div>
+	</header>
+
+	<main>
+		<section id="auth">
+			<h2>Sign in</h2>
+			<p class="muted">Authenticate with a passkey (WebAuthn).</p>
+			<button id="login-btn" class="primary">Sign in with passkey</button>
+
+			<details id="register-box">
+				<summary>Register a new passkey</summary>
+				<p class="muted">Requires the bastion bootstrap token (the same <code>--token</code> the agents use).</p>
+				<input id="bootstrap-token" type="password" placeholder="bootstrap token" autocomplete="off">
+				<button id="register-btn">Register passkey</button>
+			</details>
+
+			<p id="auth-msg" class="msg"></p>
+		</section>
+
+		<section id="app" hidden>
+			<aside>
+				<h2>Hosts</h2>
+				<ul id="hosts"></ul>
+			</aside>
+			<div id="term-wrap">
+				<div id="term-toolbar">
+					<span id="term-host">No host selected</span>
+					<button id="term-close" hidden>Close</button>
+				</div>
+				<div id="terminal"></div>
+			</div>
+		</section>
+	</main>
+
+	<script src="/static/xterm.js"></script>
+	<script src="/static/addon-fit.js"></script>
+	<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,4 +1,6 @@
-// Command entranced is the outbound-only agent (spoke): no inbound ports.
+// Command entranced is the outbound-only agent: it dials the bastion over
+// HTTPS, authenticates with a single token, and serves remote PTY shells when
+// the authenticated bastion asks. It opens no inbound ports.
 package main
 
 import (
@@ -12,112 +14,71 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"entrance/internal/config"
-	"entrance/internal/daemon"
+	"entrance/internal/agent"
 )
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "entranced:", err)
-		var revoked *daemon.RevokedError
-		if errors.As(err, &revoked) {
-			os.Exit(daemon.ExitRevoked)
-		}
 		os.Exit(1)
 	}
 }
 
 func rootCmd() *cobra.Command {
 	var (
-		serverURL string
-		dataDir   string
-		allow     string
-		bindMode  string
-		remapStr  string
-		caFile    string
-		secret    string
-		hostname  string
-		wgPort    uint16
-		heartbeat int
-		loglevel  string
+		server   string
+		token    string
+		hostname string
+		shell    string
+		caFile   string
+		auditLog string
+		loglevel string
 	)
 	cmd := &cobra.Command{
 		Use:   "entranced",
-		Short: "Outbound-only bastion agent (spoke)",
+		Short: "Entrance outbound-only agent (remote shell over HTTPS)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			level := slog.LevelInfo
 			if loglevel == "debug" {
 				level = slog.LevelDebug
 			}
-			log := slog.New(slog.NewTextHandler(os.Stderr,
-				&slog.HandlerOptions{Level: level}))
+			log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 			slog.SetDefault(log)
 
-			ports, err := config.ParsePortList(allow)
-			if err != nil {
-				return err
+			if server == "" {
+				return errors.New("--server is required (e.g. https://bastion.example.com)")
 			}
-			remap, err := config.ParseRemap(remapStr)
-			if err != nil {
-				return err
+			tok := envOr("ENTRANCED_TOKEN", envOr("ENTRANCE_TOKEN", token))
+			if tok == "" {
+				return errors.New("--token (or ENTRANCED_TOKEN) is required")
 			}
-			if serverURL == "" {
-				return errors.New("--server is required (e.g. https://127.0.0.1:8443)")
+			if hostname == "" {
+				hostname, _ = os.Hostname()
 			}
-			cfg := config.DefaultDaemon()
-			cfg.ServerURL = serverURL
-			cfg.DataDir = expandHome(dataDir)
-			cfg.EnrollSecret = secret
-			cfg.CAFile = caFile
-			cfg.AllowedPorts = ports
-			cfg.Remap = remap
-			cfg.NetMode = bindMode
-			cfg.WGPort = wgPort
-			cfg.Hostname = hostname
-			if heartbeat > 0 {
-				cfg.HeartbeatIntervalSec = heartbeat
+			cfg := agent.Config{
+				ServerURL: server,
+				Token:     tok,
+				Hostname:  hostname,
+				Shell:     shell,
+				CAFile:    caFile,
+				AuditLog:  auditLog,
 			}
-			if cfg.Hostname == "" {
-				h, _ := os.Hostname()
-				cfg.Hostname = h
-			}
-
-			agent, err := daemon.New(cfg, log)
-			if err != nil {
-				return err
-			}
+			a := agent.New(cfg, log)
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			log.Info("entranced starting", "server", serverURL, "mode", bindMode,
-				"allow", allow, "wg_port", wgPort)
-			if err := agent.Run(ctx); err != nil {
-				return err
-			}
-			return nil
+			log.Info("entranced starting", "server", server, "hostname", hostname)
+			return a.Run(ctx)
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&serverURL, "server", envOr("ENTRANCED_SERVER", ""), "control plane base URL")
-	f.StringVar(&dataDir, "data-dir", envOr("ENTRANCED_DATA_DIR", "~/.entrance-agent"), "agent state directory (0600)")
-	f.StringVar(&allow, "allow", "", "comma-separated allowed target ports, e.g. 22,3389,5432")
-	f.StringVar(&bindMode, "net-mode", envOr("ENTRANCED_NET_MODE", "loopback"), "loopback (rootless) or tun (kernel TUN, root)")
-	f.StringVar(&remapStr, "remap", "", "exposed-port remap, e.g. 22=2222")
-	f.StringVar(&caFile, "ca-file", "", "pin control plane CA cert (dev fingerprint / corporate CA)")
-	f.StringVar(&secret, "secret", envOr("ENTRANCED_ENROLL_SECRET", ""), "one-time enrollment secret (first run only)")
+	f.StringVar(&server, "server", envOr("ENTRANCED_SERVER", ""), "bastion base URL (https://...)")
+	f.StringVar(&token, "token", "", "shared token (env ENTRANCED_TOKEN / ENTRANCE_TOKEN)")
 	f.StringVar(&hostname, "hostname", "", "reported hostname (default: os.Hostname)")
-	f.Uint16Var(&wgPort, "wg-port", 51821, "loopback WG anchor port")
-	f.IntVar(&heartbeat, "heartbeat", 30, "heartbeat interval seconds")
+	f.StringVar(&shell, "shell", "", "shell to run for bastion sessions (default: $SHELL or /bin/sh)")
+	f.StringVar(&caFile, "ca-file", "", "pin the bastion CA certificate (PEM)")
+	f.StringVar(&auditLog, "audit-log", "", "append shell session audit lines to this file")
 	f.StringVar(&loglevel, "log-level", "info", "info or debug")
 	return cmd
-}
-
-func expandHome(p string) string {
-	if len(p) >= 2 && p[0] == '~' && p[1] == '/' {
-		if h, err := os.UserHomeDir(); err == nil {
-			return h + p[1:]
-		}
-	}
-	return p
 }
 
 func envOr(key, def string) string {

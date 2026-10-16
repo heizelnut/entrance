@@ -1,26 +1,17 @@
 [Unit]
-Description=Entrance bastion control plane
+Description=Entrance bastion
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=entrance
-Group=entrance
-ExecStart=/usr/local/bin/entrance serve --data-dir /var/lib/entrance \
-    --relay-mode wg --hostname YOUR_DOMAIN
-Environment=ENTRANCE_ADMIN_PASSWORD=
-Environment=ENTRANCE_LOG_LEVEL=info
+# ENTRANCE_TOKEN=<shared token> in this file (chmod 600).
+EnvironmentFile=/etc/entrance/entrance.env
+ExecStart=/usr/local/bin/entrance --dev=false --listen :443 \
+    --hostname bastion.example.com --data-dir /var/lib/entrance
 Restart=on-failure
-RestartSec=5
-# harden
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/entrance
-CapabilityBoundingSet=
-AmbientCapabilities=
+RestartSec=3
+StateDirectory=entrance
 
 [Install]
 WantedBy=multi-user.target
